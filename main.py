@@ -8,7 +8,13 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 import json
 import time
-from tavily import TavilyClient
+
+# Try to import Tavily, fallback if not available
+try:
+    from tavily import TavilyClient
+    TAVILY_AVAILABLE = True
+except ImportError:
+    TAVILY_AVAILABLE = False
 
 st.set_page_config(page_title="📻 AI Tagalog Radio", page_icon="📻", layout="wide")
 
@@ -25,8 +31,13 @@ if not all([SPOTIPY_CLIENT_ID, SPOTIPY_CLIENT_SECRET, OPENAI_API_KEY]):
 
 openai.api_key = OPENAI_API_KEY
 
-# Initialize Tavily client
-tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
+# Initialize Tavily client if available
+tavily_client = None
+if TAVILY_AVAILABLE:
+    try:
+        tavily_client = TavilyClient(api_key=TAVILY_API_KEY)
+    except:
+        TAVILY_AVAILABLE = False
 
 def generate_dj_script():
     """Generate a DJ script that includes mood, genre, and song selection criteria"""
@@ -180,25 +191,39 @@ def generate_album_art(mood, track_name):
         return None
 
 def search_artist_info(artist_name):
-    """Search for artist information and marketing content using Tavily"""
-    try:
-        query = f"{artist_name} Filipino OPM artist biography achievements recent news"
-        search_results = tavily_client.search(
-            query=query,
-            search_depth="basic",
-            max_results=3
-        )
-        
-        # Combine search results into marketing content
-        marketing_info = ""
-        if search_results and 'results' in search_results:
-            for result in search_results['results'][:2]:  # Use top 2 results
-                marketing_info += f"{result.get('content', '')[:200]}... "
-        
-        return marketing_info.strip()
-    except Exception as e:
-        st.error(f"Web search error: {e}")
-        return f"Amazing Filipino artist {artist_name} continues to captivate audiences with their incredible music!"
+    """Search for artist information and marketing content"""
+    if TAVILY_AVAILABLE and tavily_client:
+        try:
+            query = f"{artist_name} Filipino OPM artist biography achievements recent news"
+            search_results = tavily_client.search(
+                query=query,
+                search_depth="basic",
+                max_results=3
+            )
+            
+            # Combine search results into marketing content
+            marketing_info = ""
+            if search_results and 'results' in search_results:
+                for result in search_results['results'][:2]:  # Use top 2 results
+                    marketing_info += f"{result.get('content', '')[:200]}... "
+            
+            return marketing_info.strip()
+        except Exception as e:
+            pass
+    
+    # Fallback artist info database for popular OPM artists
+    artist_info_db = {
+        "Ben&Ben": "Ben&Ben ay isa sa mga pinakasikat na indie folk band sa Pilipinas na kilala sa kanilang emosyonal na mga kanta at magagandang lyrics.",
+        "Moira Dela Torre": "Si Moira Dela Torre ay isang award-winning Filipino singer-songwriter na kilala sa kanyang mataas na boses at heartfelt na mga ballade.",
+        "December Avenue": "December Avenue ay isang Filipino rock band na naging viral sa social media dahil sa kanilang mga romantic at relatable na mga kanta.",
+        "IV of Spades": "IV of Spades ay isang Filipino rock band na naging kilala sa kanilang retro-funk sound at catchy na mga hit songs.",
+        "SB19": "SB19 ay ang unang Filipino boy group na naging international sensation at naging pride ng Pilipinas sa K-pop industry.",
+        "BINI": "BINI ay isang rising Filipino girl group na naging viral sa TikTok at kilala sa kanilang energetic performances.",
+        "Eraserheads": "Eraserheads ay ang 'Beatles ng Pilipinas' at isa sa mga pinakaimpluwensyal na banda sa OPM history.",
+        "Rivermaya": "Rivermaya ay isa sa mga pioneering rock bands sa Pilipinas na may malaking contribution sa 90s OPM scene."
+    }
+    
+    return artist_info_db.get(artist_name, f"Si {artist_name} ay isa sa mga talented na OPM artist na patuloy na nagbibigay ng magagandang kanta para sa mga Filipino music lovers!")
 
 def generate_artist_marketing_script(artist_name, track_name, artist_info):
     """Generate marketing script about the artist using web search results"""
