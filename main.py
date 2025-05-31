@@ -347,7 +347,7 @@ def get_multiple_omp_tracks(sp, mood_description, count=5):
     tracks = []
     track_ids_seen = set()  # Track IDs to avoid duplicates
     
-    # Diverse search strategies for variety
+    # Diverse search strategies for variety including indie/small artist discovery
     search_strategies = [
         # Strategy 1: Use original mood
         lambda: search_spotify_by_mood(sp, mood_description),
@@ -355,14 +355,20 @@ def get_multiple_omp_tracks(sp, mood_description, count=5):
         # Strategy 2: Search by popular OPM artists
         lambda: search_by_random_opm_artist(sp),
         
-        # Strategy 3: Search different moods
+        # Strategy 3: Discover indie/underground artists (30% chance)
+        lambda: discover_indie_opm_artists(sp),
+        lambda: discover_emerging_opm_artists(sp),
+        lambda: search_by_independent_labels(sp),
+        lambda: search_regional_opm_scenes(sp),
+        
+        # Strategy 4: Search different moods
         lambda: search_spotify_by_mood(sp, "masayang pop song"),
         lambda: search_spotify_by_mood(sp, "romantic ballad"),
         lambda: search_spotify_by_mood(sp, "energetic rock"),
         lambda: search_spotify_by_mood(sp, "chill acoustic"),
         lambda: search_spotify_by_mood(sp, "dance party song"),
         
-        # Strategy 4: Search by genre
+        # Strategy 5: Search by genre
         lambda: search_opm_by_genre(sp, "OPM rock"),
         lambda: search_opm_by_genre(sp, "Filipino pop"),
         lambda: search_opm_by_genre(sp, "Pinoy alternative"),
@@ -415,6 +421,172 @@ def search_opm_by_genre(sp, genre_query):
     except:
         pass
     return None
+
+def discover_indie_opm_artists(sp):
+    """Discover small/indie OPM artists with low visibility"""
+    try:
+        import random
+        
+        # Search strategies for indie/underground OPM
+        indie_search_terms = [
+            '"filipino indie" market:PH',
+            '"pinoy underground" market:PH', 
+            '"manila music scene" market:PH',
+            '"quezon city bands" market:PH',
+            '"OPM indie" market:PH',
+            '"pinoy DIY" market:PH',
+            '"filipino alternative" market:PH',
+            '"independent filipino" market:PH'
+        ]
+        
+        indie_tracks = []
+        
+        for search_term in indie_search_terms:
+            try:
+                results = sp.search(q=search_term, type='track', limit=50, market='PH')
+                if results['tracks']['items']:
+                    # Filter for low-popularity tracks (under 30 popularity score)
+                    low_popularity_tracks = [
+                        track for track in results['tracks']['items']
+                        if track['popularity'] < 30
+                    ]
+                    indie_tracks.extend(low_popularity_tracks)
+            except:
+                continue
+        
+        # Remove duplicates and return random track
+        if indie_tracks:
+            unique_tracks = {track['id']: track for track in indie_tracks}
+            return random.choice(list(unique_tracks.values()))
+            
+        return None
+        
+    except Exception as e:
+        return None
+
+def search_by_independent_labels(sp):
+    """Search for artists from independent Filipino labels"""
+    try:
+        import random
+        
+        # Key independent Filipino labels
+        indie_labels = [
+            'O/C Records',
+            'PolyEast Records', 
+            'Music Colony Records',
+            'Downtown Q',
+            'LIAB Studios',
+            'Tarsier Records',
+            'Offshore Music',
+            'Careless Music Manila'
+        ]
+        
+        for label in indie_labels:
+            try:
+                # Search for tracks associated with these labels
+                results = sp.search(q=f'label:"{label}" market:PH', type='track', limit=20, market='PH')
+                if not results['tracks']['items']:
+                    # Try alternative search if label search doesn't work
+                    results = sp.search(q=f'"{label}" filipino music', type='track', limit=20, market='PH')
+                
+                if results['tracks']['items']:
+                    # Prefer tracks with lower popularity
+                    tracks = sorted(results['tracks']['items'], key=lambda x: x['popularity'])
+                    return tracks[0] if tracks else None
+                    
+            except:
+                continue
+                
+        return None
+        
+    except Exception as e:
+        return None
+
+def discover_emerging_opm_artists(sp):
+    """Find emerging OPM artists with recent releases and low popularity"""
+    try:
+        import random
+        from datetime import datetime, timedelta
+        
+        # Search for recent releases in Philippines
+        current_year = datetime.now().year
+        last_year = current_year - 1
+        
+        emerging_search_terms = [
+            f'"OPM" year:{current_year} market:PH',
+            f'"filipino music" year:{current_year} market:PH',
+            f'"pinoy artist" year:{last_year}-{current_year} market:PH',
+            f'genre:"philippines-opm" year:{last_year}-{current_year}'
+        ]
+        
+        emerging_tracks = []
+        
+        for search_term in emerging_search_terms:
+            try:
+                results = sp.search(q=search_term, type='track', limit=50, market='PH')
+                if results['tracks']['items']:
+                    # Filter for very low popularity (emerging artists)
+                    very_new_tracks = [
+                        track for track in results['tracks']['items']
+                        if track['popularity'] < 25  # Very low popularity threshold
+                    ]
+                    emerging_tracks.extend(very_new_tracks)
+            except:
+                continue
+        
+        if emerging_tracks:
+            # Remove duplicates and prioritize newest releases
+            unique_tracks = {track['id']: track for track in emerging_tracks}
+            tracks_list = list(unique_tracks.values())
+            
+            # Sort by release date (newest first) and popularity (lowest first)
+            sorted_tracks = sorted(tracks_list, 
+                                 key=lambda x: (x['album']['release_date'], x['popularity']), 
+                                 reverse=True)
+            
+            return random.choice(sorted_tracks[:10])  # Pick from top 10 newest/lowest popularity
+            
+        return None
+        
+    except Exception as e:
+        return None
+
+def search_regional_opm_scenes(sp):
+    """Discover artists from specific Filipino regional music scenes"""
+    try:
+        import random
+        
+        # Regional music scenes and venues
+        regional_terms = [
+            '"route 196" manila',  # Famous indie venue
+            '"mows bar" quezon city',
+            '"saguijo" makati',
+            '"b-side" the collective',
+            '"cebu music scene"',
+            '"davao indie"',
+            '"baguio musicians"',
+            '"iloilo bands"',
+            '"bacolod music"'
+        ]
+        
+        for term in regional_terms:
+            try:
+                results = sp.search(q=f'{term} filipino', type='track', limit=30, market='PH')
+                if results['tracks']['items']:
+                    # Filter for lower popularity regional artists
+                    regional_tracks = [
+                        track for track in results['tracks']['items']
+                        if track['popularity'] < 35
+                    ]
+                    if regional_tracks:
+                        return random.choice(regional_tracks)
+            except:
+                continue
+                
+        return None
+        
+    except Exception as e:
+        return None
 
 def main():
     st.title("📻 AI Tagalog Radio")
@@ -559,9 +731,15 @@ def main():
                         # Generate artist marketing script
                         marketing_script = generate_artist_marketing_script(artist_name, track_name, artist_info)
                         
+                        # Check if this is a small/indie artist (low popularity)
+                        is_indie_artist = current_track['popularity'] < 30
+                        indie_promo = ""
+                        if is_indie_artist:
+                            indie_promo = "Ito ay isang hidden gem mula sa isang talented indie artist na deserve ng mas maraming suporta! "
+                        
                         # Generate TTS for marketing + intro
                         full_intro = f"""Kamusta mga ka-tropa! Narito ang susunod nating kanta. 
-                        {marketing_script} 
+                        {indie_promo}{marketing_script} 
                         Pakinggan natin ang {track_name} ni {artist_name}!"""
                         
                         tts_audio = generate_tts(full_intro)
@@ -579,6 +757,12 @@ def main():
                         with track_col2:
                             st.markdown(f"### 🎵 {track_name}")
                             st.markdown(f"**Artist:** {artist_name}")
+                            
+                            # Show indie artist badge
+                            if is_indie_artist:
+                                st.markdown("🌟 **Indie/Emerging Artist** - *Support small OPM artists!*")
+                                st.markdown(f"**Popularity Score:** {current_track['popularity']}/100")
+                            
                             st.markdown(f"**Track {st.session_state.current_track_index + 1}** of {len(st.session_state.radio_tracks)}")
                             
                             # DJ Voice
