@@ -118,7 +118,9 @@ def search_spotify_by_mood(sp, mood_description):
                 **{f'target_{k}': v for k, v in target_features.items()}
             )
             if recommendations['tracks']:
-                return recommendations['tracks'][0]
+                import random
+                # Return a random track from recommendations instead of always first
+                return random.choice(recommendations['tracks'][:10])
         except:
             pass
         
@@ -128,7 +130,9 @@ def search_spotify_by_mood(sp, mood_description):
                 # Search with Philippines market preference
                 results = sp.search(q=term, type='track', limit=50, market='PH')
                 if results['tracks']['items']:
-                    return results['tracks']['items'][0]
+                    import random
+                    # Return random track from search results
+                    return random.choice(results['tracks']['items'][:20])
             except:
                 continue
         
@@ -272,27 +276,78 @@ def add_track_to_playlist(sp, playlist_id, track_id):
         return False
 
 def get_multiple_omp_tracks(sp, mood_description, count=5):
-    """Get multiple OPM tracks for continuous radio play"""
+    """Get multiple diverse OPM tracks for continuous radio play"""
     tracks = []
-    moods = [
-        "masayang pop song",
-        "romantic ballad", 
-        "energetic rock",
-        "chill acoustic",
-        "dance party song"
+    track_ids_seen = set()  # Track IDs to avoid duplicates
+    
+    # Diverse search strategies for variety
+    search_strategies = [
+        # Strategy 1: Use original mood
+        lambda: search_spotify_by_mood(sp, mood_description),
+        
+        # Strategy 2: Search by popular OPM artists
+        lambda: search_by_random_opm_artist(sp),
+        
+        # Strategy 3: Search different moods
+        lambda: search_spotify_by_mood(sp, "masayang pop song"),
+        lambda: search_spotify_by_mood(sp, "romantic ballad"),
+        lambda: search_spotify_by_mood(sp, "energetic rock"),
+        lambda: search_spotify_by_mood(sp, "chill acoustic"),
+        lambda: search_spotify_by_mood(sp, "dance party song"),
+        
+        # Strategy 4: Search by genre
+        lambda: search_opm_by_genre(sp, "OPM rock"),
+        lambda: search_opm_by_genre(sp, "Filipino pop"),
+        lambda: search_opm_by_genre(sp, "Pinoy alternative"),
     ]
     
-    # Use the original mood plus some variety
-    search_moods = [mood_description] + moods[:count-1]
-    
-    for mood in search_moods:
-        track = search_spotify_by_mood(sp, mood)
-        if track and track not in tracks:
-            tracks.append(track)
+    # Try each strategy until we get enough unique tracks
+    for strategy in search_strategies:
         if len(tracks) >= count:
             break
+            
+        try:
+            track = strategy()
+            if track and track['id'] not in track_ids_seen:
+                tracks.append(track)
+                track_ids_seen.add(track['id'])
+        except:
+            continue
     
     return tracks
+
+def search_by_random_opm_artist(sp):
+    """Search for tracks by randomly selecting from popular OPM artists"""
+    import random
+    
+    opm_artists = [
+        'Ben&Ben', 'Moira Dela Torre', 'December Avenue', 'The Juans',
+        'IV of Spades', 'Unique Salonga', 'SB19', 'BINI', 'Parokya ni Edgar',
+        'Rivermaya', 'Eraserheads', 'Bamboo', 'Sponge Cola', 'Silent Sanctuary',
+        'Kamikazee', 'Callalily', 'Moonstar88', 'Itchyworms', 'Orange and Lemons',
+        'Hale', 'Urbandub', 'Typecast', 'Chicosci', 'Sandwich', 'Teeth',
+        'Yeng Constantino', 'Sarah Geronimo', 'Regine Velasquez', 'Gary Valenciano'
+    ]
+    
+    artist = random.choice(opm_artists)
+    try:
+        results = sp.search(q=f'artist:"{artist}"', type='track', limit=20, market='PH')
+        if results['tracks']['items']:
+            return random.choice(results['tracks']['items'])
+    except:
+        pass
+    return None
+
+def search_opm_by_genre(sp, genre_query):
+    """Search OPM by specific genre"""
+    try:
+        results = sp.search(q=genre_query, type='track', limit=50, market='PH')
+        if results['tracks']['items']:
+            import random
+            return random.choice(results['tracks']['items'])
+    except:
+        pass
+    return None
 
 def main():
     st.title("📻 AI Tagalog Radio")
