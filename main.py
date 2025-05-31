@@ -13,7 +13,7 @@ st.set_page_config(page_title="📻 AI Tagalog Radio", page_icon="📻", layout=
 # Get environment variables or use Streamlit secrets
 SPOTIPY_CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID") or st.secrets.get("SPOTIPY_CLIENT_ID", "")
 SPOTIPY_CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET") or st.secrets.get("SPOTIPY_CLIENT_SECRET", "")
-SPOTIPY_REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI") or st.secrets.get("SPOTIPY_REDIRECT_URI", "https://airadio.streamlit.app")
+SPOTIPY_REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI") or st.secrets.get("SPOTIPY_REDIRECT_URI", "https://airadio-wyfdkkcryaifuvaywzbqtz.streamlit.app/callback")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", "")
 
 if not all([SPOTIPY_CLIENT_ID, SPOTIPY_CLIENT_SECRET, OPENAI_API_KEY]):
