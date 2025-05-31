@@ -275,6 +275,73 @@ def add_track_to_playlist(sp, playlist_id, track_id):
         st.error(f"Error adding track to playlist: {e}")
         return False
 
+def upload_playlist_cover_image(sp, playlist_id, image_bytes):
+    """Upload AI-generated image as playlist cover"""
+    try:
+        import base64
+        from PIL import Image
+        import io
+        
+        # Convert image bytes to PIL Image
+        img = Image.open(io.BytesIO(image_bytes))
+        
+        # Ensure it's JPEG and square format
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        
+        # Resize to optimal square dimensions (640x640)
+        img = img.resize((640, 640), Image.Resampling.LANCZOS)
+        
+        # Convert back to bytes with optimal compression
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format='JPEG', quality=85, optimize=True)
+        
+        # Check size limit (256 KB)
+        if img_byte_arr.tell() > 256000:
+            # Try with lower quality if too large
+            img_byte_arr = io.BytesIO()
+            img.save(img_byte_arr, format='JPEG', quality=70, optimize=True)
+        
+        if img_byte_arr.tell() > 256000:
+            st.warning("Generated image too large for playlist cover (>256KB)")
+            return False
+        
+        # Encode to base64
+        img_byte_arr.seek(0)
+        image_64_encode = base64.b64encode(img_byte_arr.getvalue())
+        
+        # Upload to Spotify
+        sp.playlist_upload_cover_image(playlist_id, image_64_encode)
+        return True
+        
+    except Exception as e:
+        st.error(f"Error uploading playlist cover: {e}")
+        return False
+
+def generate_playlist_cover_art(mood, playlist_name):
+    """Generate cover art specifically for the playlist"""
+    prompt = f"""
+    Create a vibrant playlist cover for "{playlist_name}". 
+    Style: {mood}, Filipino-inspired, modern design, music themed.
+    Include musical elements like notes, instruments, or sound waves.
+    Colors: Bright and appealing, suitable for a music playlist cover.
+    Format: Square album cover style, professional quality.
+    """
+    
+    try:
+        response = openai.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            n=1,
+            size="1024x1024"
+        )
+        img_url = response.data[0].url
+        img_response = requests.get(img_url)
+        return img_response.content
+    except Exception as e:
+        st.error(f"Playlist cover generation error: {e}")
+        return None
+
 def get_multiple_omp_tracks(sp, mood_description, count=5):
     """Get multiple diverse OPM tracks for continuous radio play"""
     tracks = []
@@ -358,7 +425,7 @@ def main():
         st.session_state.spotify_token = None
     
     # Spotify Authentication  
-    scope = "user-read-playback-state user-library-modify playlist-modify-public playlist-modify-private"
+    scope = "user-read-playback-state user-library-modify playlist-modify-public playlist-modify-private ugc-image-upload"
     sp_oauth = SpotifyOAuth(
         client_id=SPOTIPY_CLIENT_ID,
         client_secret=SPOTIPY_CLIENT_SECRET,
@@ -417,7 +484,8 @@ def main():
                             try:
                                 # Step 1: Create custom playlist
                                 st.markdown("**Step 1:** Creating your custom playlist...")
-                                playlist_id = create_custom_playlist(sp, f"AI Radio - {time.strftime('%Y-%m-%d %H:%M')}")
+                                playlist_name = f"AI Radio - {time.strftime('%Y-%m-%d %H:%M')}"
+                                playlist_id = create_custom_playlist(sp, playlist_name)
                                 st.session_state.playlist_id = playlist_id
                                 
                                 # Step 2: Generate initial DJ script to determine mood
@@ -425,22 +493,37 @@ def main():
                                 dj_script = generate_dj_script()
                                 mood = extract_mood_from_script(dj_script)
                                 
-                                # Step 3: Get multiple tracks for continuous play
-                                st.markdown("**Step 3:** Selecting OPM tracks for the show...")
+                                # Step 3: Generate playlist cover art
+                                st.markdown("**Step 3:** Creating custom playlist cover art...")
+                                playlist_cover = generate_playlist_cover_art(mood, playlist_name)
+                                
+                                # Step 4: Get multiple tracks for continuous play
+                                st.markdown("**Step 4:** Selecting OPM tracks for the show...")
                                 tracks = get_multiple_omp_tracks(sp, mood, count=5)
                                 
                                 if not tracks:
                                     st.error("Could not find suitable tracks. Please try again.")
                                     return
                                 
-                                # Add tracks to playlist
+                                # Step 5: Add tracks to playlist
+                                st.markdown("**Step 5:** Building your playlist...")
                                 for track in tracks:
                                     if playlist_id:
                                         add_track_to_playlist(sp, playlist_id, track['id'])
                                 
+                                # Step 6: Upload custom cover art
+                                if playlist_cover and playlist_id:
+                                    st.markdown("**Step 6:** Setting custom playlist cover...")
+                                    cover_uploaded = upload_playlist_cover_image(sp, playlist_id, playlist_cover)
+                                    if cover_uploaded:
+                                        st.success("✅ Custom playlist cover uploaded!")
+                                    else:
+                                        st.warning("⚠️ Playlist created but cover upload failed")
+                                
                                 st.session_state.radio_tracks = tracks
                                 st.session_state.radio_active = True
                                 st.session_state.current_track_index = 0
+                                st.session_state.playlist_cover = playlist_cover  # Store for display
                                 
                                 st.success("🎉 AI Radio Station is now live!")
                                 st.rerun()
@@ -560,6 +643,11 @@ def main():
             # Show playlist info
             if st.session_state.radio_active and st.session_state.playlist_id:
                 st.markdown("### 📝 Your Playlist")
+                
+                # Show playlist cover if available
+                if hasattr(st.session_state, 'playlist_cover') and st.session_state.playlist_cover:
+                    st.image(st.session_state.playlist_cover, caption="Custom Playlist Cover", width=200)
+                
                 playlist_url = f"https://open.spotify.com/playlist/{st.session_state.playlist_id}"
                 st.markdown(f"[View AI Radio Playlist on Spotify]({playlist_url})")
                 
