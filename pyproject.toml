@@ -1,0 +1,14 @@
+[project]
+name = "airadio"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.82.1",
+    "pillow>=11.2.1",
+    "python-dotenv>=1.1.0",
+    "requests>=2.32.3",
+    "spotipy>=2.25.1",
+    "streamlit>=1.45.1",
+]
