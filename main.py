@@ -64,56 +64,80 @@ def extract_mood_from_script(script):
         return "happy upbeat song"
 
 def search_spotify_by_mood(sp, mood_description):
-    """Search Spotify for songs based on mood description"""
+    """Search Spotify for OPM songs based on mood description"""
     try:
-        # Map mood to search terms and audio features
+        # Map mood to search terms and audio features for OPM
         mood_lower = mood_description.lower()
         
-        # Default search terms
-        search_terms = []
+        # OPM-specific search terms based on mood
+        opm_search_terms = []
         target_features = {}
         
         if any(word in mood_lower for word in ['masaya', 'happy', 'energetic']):
-            search_terms = ['pop', 'upbeat', 'happy']
+            opm_search_terms = ['OPM happy', 'Filipino pop upbeat', 'Pinoy rock energetic']
             target_features = {'valence': 0.8, 'energy': 0.7}
-        elif any(word in mood_lower for word in ['romantic', 'love', 'ballad']):
-            search_terms = ['love', 'romantic', 'ballad']
+        elif any(word in mood_lower for word in ['romantic', 'love', 'ballad', 'hugot']):
+            opm_search_terms = ['OPM love songs', 'Filipino ballad', 'Pinoy romantic', 'hugot songs']
             target_features = {'valence': 0.6, 'energy': 0.4}
-        elif any(word in mood_lower for word in ['dance', 'sayaw', 'party']):
-            search_terms = ['dance', 'party', 'electronic']
+        elif any(word in mood_lower for word in ['dance', 'sayaw', 'party', 'disco']):
+            opm_search_terms = ['OPM dance', 'Filipino party songs', 'Pinoy disco']
             target_features = {'danceability': 0.8, 'energy': 0.8}
-        elif any(word in mood_lower for word in ['sad', 'malungkot']):
-            search_terms = ['sad', 'emotional']
+        elif any(word in mood_lower for word in ['sad', 'malungkot', 'emo']):
+            opm_search_terms = ['OPM sad', 'Filipino emotional', 'Pinoy emo']
             target_features = {'valence': 0.3, 'energy': 0.4}
+        elif any(word in mood_lower for word in ['rock', 'metal', 'alternative']):
+            opm_search_terms = ['OPM rock', 'Filipino rock', 'Pinoy alternative', 'Pinoy metal']
+            target_features = {'energy': 0.8, 'loudness': -5}
         else:
-            search_terms = ['pop', 'trending']
+            opm_search_terms = ['OPM hits', 'Filipino pop', 'Pinoy classics']
             target_features = {'valence': 0.6, 'energy': 0.6}
         
-        # Try recommendations first (better for mood matching)
+        # Try recommendations with Philippines OPM genre first
         try:
             recommendations = sp.recommendations(
-                seed_genres=['pop'],
+                seed_genres=['philippines-opm'],
                 limit=20,
+                market='PH',
                 **{f'target_{k}': v for k, v in target_features.items()}
             )
             if recommendations['tracks']:
-                return recommendations['tracks'][0]  # Return first recommendation
+                return recommendations['tracks'][0]
         except:
             pass
         
-        # Fallback to search
-        for term in search_terms:
+        # Search specifically for OPM/Filipino music
+        for term in opm_search_terms:
             try:
-                results = sp.search(q=term, type='track', limit=50, market='US')
+                # Search with Philippines market preference
+                results = sp.search(q=term, type='track', limit=50, market='PH')
                 if results['tracks']['items']:
                     return results['tracks']['items'][0]
             except:
                 continue
         
-        # Final fallback - search for popular songs
-        results = sp.search(q='popular hits', type='track', limit=10, market='US')
-        if results['tracks']['items']:
-            return results['tracks']['items'][0]
+        # Additional OPM artist search
+        famous_opm_artists = [
+            'Ben&Ben', 'Moira Dela Torre', 'December Avenue', 'The Juans',
+            'IV of Spades', 'Unique Salonga', 'SB19', 'BINI', 'Parokya ni Edgar',
+            'Rivermaya', 'Eraserheads', 'Bamboo', 'Sponge Cola', 'Silent Sanctuary',
+            'Kamikazee', 'Callalily', 'Moonstar88', 'Itchyworms', 'Orange and Lemons'
+        ]
+        
+        for artist in famous_opm_artists[:5]:  # Try first 5 artists
+            try:
+                results = sp.search(q=f'artist:{artist}', type='track', limit=20, market='PH')
+                if results['tracks']['items']:
+                    return results['tracks']['items'][0]
+            except:
+                continue
+        
+        # Final fallback - general OPM search
+        try:
+            results = sp.search(q='OPM Filipino music', type='track', limit=20, market='PH')
+            if results['tracks']['items']:
+                return results['tracks']['items'][0]
+        except:
+            pass
             
         return None
         
