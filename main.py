@@ -22,30 +22,22 @@ if not all([SPOTIPY_CLIENT_ID, SPOTIPY_CLIENT_SECRET, OPENAI_API_KEY]):
 
 openai.api_key = OPENAI_API_KEY
 
-def infer_mood(features):
-    valence = features['valence']
-    energy = features['energy']
-    danceability = features['danceability']
+def generate_dj_script():
+    """Generate a DJ script that includes mood, genre, and song selection criteria"""
+    prompt = """
+    Ikaw ay isang radio DJ na masigla sa isang Tagalog radio station. 
     
-    if valence > 0.7 and energy > 0.7:
-        return "masaya at energetic"
-    elif valence > 0.6 and danceability > 0.7:
-        return "nakakasayaw"
-    elif valence < 0.3:
-        return "malungkot"
-    elif energy < 0.3:
-        return "relaxing"
-    else:
-        return "chill"
-
-def generate_dj_script(track_name, artist_name, mood):
-    prompt = f"""
-    Ikaw ay isang radio DJ na masigla at kalmado. 
-    Track: {track_name} – {artist_name}
-    Mood: {mood}
+    Gumawa ng:
+    1. Magandang DJ intro/patter sa Tagalog (2-3 sentences)
+    2. Describe kung anong mood/genre ng kanta na gusto mo i-play (e.g., "masayang pop song", "romantic ballad", "energetic dance track")
+    3. Include marketing hype about the upcoming song
     
-    Gumawa ng 1-2 pangungusap pambati sa Tagalog na mag-market din ng kanta. 
-    Maging engaging at huwag masyadong mahaba.
+    Format your response as:
+    INTRO: [your tagalog DJ intro]
+    MOOD: [mood/genre you want to play] 
+    HYPE: [marketing line about the song]
+    
+    Be engaging, fun, and authentically Filipino!
     """
     
     try:
@@ -55,7 +47,79 @@ def generate_dj_script(track_name, artist_name, mood):
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        return f"Kamusta mga ka-tropa! Narito si DJ AI at papakinggan natin ang {track_name} ni {artist_name}!"
+        return """INTRO: Kamusta mga ka-tropa! Narito si DJ AI para sa inyong paboritong kanta!
+MOOD: masayang pop song
+HYPE: Pakinggan natin ang bagong hit na siguradong magpapasaya sa inyong araw!"""
+
+def extract_mood_from_script(script):
+    """Extract mood/genre from DJ script to use for Spotify search"""
+    try:
+        lines = script.split('\n')
+        mood_line = [line for line in lines if line.startswith('MOOD:')]
+        if mood_line:
+            mood = mood_line[0].replace('MOOD:', '').strip()
+            return mood
+        return "happy upbeat song"
+    except:
+        return "happy upbeat song"
+
+def search_spotify_by_mood(sp, mood_description):
+    """Search Spotify for songs based on mood description"""
+    try:
+        # Map mood to search terms and audio features
+        mood_lower = mood_description.lower()
+        
+        # Default search terms
+        search_terms = []
+        target_features = {}
+        
+        if any(word in mood_lower for word in ['masaya', 'happy', 'energetic']):
+            search_terms = ['pop', 'upbeat', 'happy']
+            target_features = {'valence': 0.8, 'energy': 0.7}
+        elif any(word in mood_lower for word in ['romantic', 'love', 'ballad']):
+            search_terms = ['love', 'romantic', 'ballad']
+            target_features = {'valence': 0.6, 'energy': 0.4}
+        elif any(word in mood_lower for word in ['dance', 'sayaw', 'party']):
+            search_terms = ['dance', 'party', 'electronic']
+            target_features = {'danceability': 0.8, 'energy': 0.8}
+        elif any(word in mood_lower for word in ['sad', 'malungkot']):
+            search_terms = ['sad', 'emotional']
+            target_features = {'valence': 0.3, 'energy': 0.4}
+        else:
+            search_terms = ['pop', 'trending']
+            target_features = {'valence': 0.6, 'energy': 0.6}
+        
+        # Try recommendations first (better for mood matching)
+        try:
+            recommendations = sp.recommendations(
+                seed_genres=['pop'],
+                limit=20,
+                **{f'target_{k}': v for k, v in target_features.items()}
+            )
+            if recommendations['tracks']:
+                return recommendations['tracks'][0]  # Return first recommendation
+        except:
+            pass
+        
+        # Fallback to search
+        for term in search_terms:
+            try:
+                results = sp.search(q=term, type='track', limit=50, market='US')
+                if results['tracks']['items']:
+                    return results['tracks']['items'][0]
+            except:
+                continue
+        
+        # Final fallback - search for popular songs
+        results = sp.search(q='popular hits', type='track', limit=10, market='US')
+        if results['tracks']['items']:
+            return results['tracks']['items'][0]
+            
+        return None
+        
+    except Exception as e:
+        st.error(f"Spotify search error: {e}")
+        return None
 
 def generate_tts(text):
     try:
@@ -102,121 +166,130 @@ def main():
         scope=scope
     )
     
-    # Check for auth code in URL
-    auth_url = sp_oauth.get_authorize_url()
+    # Check for auth code in URL parameters
+    query_params = st.query_params
+    auth_code = query_params.get("code")
     
     if st.session_state.spotify_token is None:
-        st.markdown("### 🎵 Connect to Spotify")
-        st.markdown(f"[Click here to authorize Spotify access]({auth_url})")
-        
-        auth_code = st.text_input("Paste the authorization code from the URL after clicking above:")
         if auth_code:
+            # Handle the callback automatically
             try:
                 token_info = sp_oauth.get_access_token(auth_code)
                 st.session_state.spotify_token = token_info['access_token']
+                # Clear the URL parameters after successful auth
+                st.query_params.clear()
                 st.success("Spotify connected!")
                 st.rerun()
             except Exception as e:
                 st.error(f"Authentication error: {e}")
+        else:
+            # Show authorization link
+            auth_url = sp_oauth.get_authorize_url()
+            st.markdown("### 🎵 Connect to Spotify")
+            st.markdown(f"[Click here to authorize Spotify access]({auth_url})")
     else:
         # Main app interface
         sp = spotipy.Spotify(auth=st.session_state.spotify_token)
         
+        st.markdown("### 🎙️ AI Radio Station")
+        st.markdown("*The AI DJ will generate a script, select a perfect song, and create the full radio experience!*")
+        
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            st.markdown("### 🎧 Current Track")
-            
-            # Option to manually enter track ID for testing
-            manual_track = st.text_input("Or enter Spotify Track ID manually:", 
-                                       placeholder="e.g., 4iV5W9uYEdYUVa79Axb7Rh")
-            
-            track_id = None
-            track = None
-            
-            if manual_track:
-                track_id = manual_track
-            else:
-                # Try to get current playing track
-                try:
-                    current = sp.current_playback()
-                    if current and current['item']:
-                        track = current['item']
-                        track_id = track['id']
-                    else:
-                        st.info("No track currently playing. Please start playing a song on Spotify or enter a track ID manually.")
-                except Exception as e:
-                    st.error(f"Error getting current track: {e}")
-            
-            if track_id:
-                if not track:
+            # Big button to start the AI radio experience
+            if st.button("🎵 Start AI Radio Show", type="primary", use_container_width=True):
+                with st.spinner("🤖 AI DJ is preparing the show..."):
                     try:
-                        track = sp.track(track_id)
+                        # Step 1: Generate DJ script
+                        st.markdown("**Step 1:** Generating DJ script...")
+                        dj_script = generate_dj_script()
+                        
+                        # Step 2: Extract mood and select song
+                        st.markdown("**Step 2:** Selecting perfect song based on DJ's mood...")
+                        mood = extract_mood_from_script(dj_script)
+                        selected_track = search_spotify_by_mood(sp, mood)
+                        
+                        if not selected_track:
+                            st.error("Could not find a suitable track. Please try again.")
+                            return
+                        
+                        # Step 3: Generate TTS for the script
+                        st.markdown("**Step 3:** Converting DJ script to voice...")
+                        
+                        # Parse the script components
+                        script_lines = dj_script.split('\n')
+                        intro_line = [line for line in script_lines if line.startswith('INTRO:')]
+                        hype_line = [line for line in script_lines if line.startswith('HYPE:')]
+                        
+                        intro_text = intro_line[0].replace('INTRO:', '').strip() if intro_line else "Kamusta mga ka-tropa!"
+                        hype_text = hype_line[0].replace('HYPE:', '').strip() if hype_line else "Pakinggan natin ang magandang kantang ito!"
+                        
+                        # Create full script with song info
+                        full_script = f"{intro_text} {hype_text} Narito ang {selected_track['name']} ni {selected_track['artists'][0]['name']}!"
+                        
+                        tts_audio = generate_tts(full_script)
+                        
+                        # Step 4: Generate album art
+                        st.markdown("**Step 4:** Creating mood-based album art...")
+                        album_art = generate_album_art(mood, selected_track['name'])
+                        
+                        # Display the complete radio show
+                        st.markdown("---")
+                        st.markdown("## 📻 Your AI Radio Show")
+                        
+                        # Show album art
+                        if album_art:
+                            st.image(album_art, caption="AI Generated Album Art", width=400)
+                        
+                        # Show DJ script
+                        st.markdown("### 🎙️ DJ Script")
+                        st.info(f"**Mood:** {mood}")
+                        st.write(dj_script)
+                        
+                        # Play DJ voice
+                        if tts_audio:
+                            st.markdown("### 🔊 DJ Voice")
+                            st.audio(tts_audio, format="audio/mp3")
+                        
+                        # Show selected track
+                        st.markdown("### 🎵 Selected Track")
+                        st.markdown(f"**{selected_track['name']}** by **{selected_track['artists'][0]['name']}**")
+                        
+                        # Spotify embed
+                        embed_html = f"""
+                        <iframe src="https://open.spotify.com/embed/track/{selected_track['id']}" 
+                                width="100%" height="152" frameborder="0" 
+                                allowtransparency="true" allow="encrypted-media">
+                        </iframe>
+                        """
+                        st.components.v1.html(embed_html, height=152)
+                        
+                        # Store track ID for actions
+                        st.session_state.current_track_id = selected_track['id']
+                        
                     except Exception as e:
-                        st.error(f"Error getting track details: {e}")
-                        return
-                
-                # Display track info
-                st.markdown(f"**{track['name']}** by **{track['artists'][0]['name']}**")
-                
-                # Spotify embed
-                embed_html = f"""
-                <iframe src="https://open.spotify.com/embed/track/{track_id}" 
-                        width="100%" height="152" frameborder="0" 
-                        allowtransparency="true" allow="encrypted-media">
-                </iframe>
-                """
-                st.components.v1.html(embed_html, height=152)
-                
-                # Generate AI content
-                if st.button("🎙️ Generate DJ Intro"):
-                    with st.spinner("AI DJ is preparing your intro..."):
-                        try:
-                            # Get audio features
-                            features = sp.audio_features(track_id)[0]
-                            mood = infer_mood(features)
-                            
-                            # Generate DJ script
-                            dj_script = generate_dj_script(track['name'], track['artists'][0]['name'], mood)
-                            
-                            # Generate TTS
-                            tts_audio = generate_tts(dj_script)
-                            
-                            # Generate album art
-                            album_art = generate_album_art(mood, track['name'])
-                            
-                            # Display results
-                            st.markdown("### 🎨 AI Generated Content")
-                            
-                            if album_art:
-                                st.image(album_art, caption="AI Generated Album Art", width=300)
-                            
-                            st.markdown("### 🎙️ DJ Script")
-                            st.write(dj_script)
-                            
-                            if tts_audio:
-                                st.markdown("### 🔊 DJ Voice")
-                                st.audio(tts_audio, format="audio/mp3")
-                            
-                            st.markdown(f"**Detected Mood:** {mood}")
-                            
-                        except Exception as e:
-                            st.error(f"Error generating content: {e}")
+                        st.error(f"Error generating radio show: {e}")
         
         with col2:
             st.markdown("### 💚 Quick Actions")
             
-            if track_id and st.button("💚 Save Track"):
-                try:
-                    sp.current_user_saved_tracks_add([track_id])
-                    st.success("Track saved to your library!")
-                except Exception as e:
-                    st.error(f"Error saving track: {e}")
-            
-            if track_id:
+            if hasattr(st.session_state, 'current_track_id') and st.session_state.current_track_id:
+                track_id = st.session_state.current_track_id
+                
+                if st.button("💚 Save Track"):
+                    try:
+                        sp.current_user_saved_tracks_add([track_id])
+                        st.success("Track saved to your library!")
+                    except Exception as e:
+                        st.error(f"Error saving track: {e}")
+                
                 share_url = f"https://open.spotify.com/track/{track_id}"
-                st.markdown(f"### 🔗 Share")
+                st.markdown("### 🔗 Share")
                 st.code(share_url)
+                
+                if st.button("🔄 Generate New Show"):
+                    st.rerun()
 
 if __name__ == "__main__":
     main()
